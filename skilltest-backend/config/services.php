@@ -38,6 +38,7 @@ return [
     'openweather' => [
         'key' => env('OPENWEATHER_API_KEY'),
         'base_url' => 'https://api.openweathermap.org/data/2.5',
+        'cache_ttl_seconds' => (int) env('WEATHER_CACHE_TTL', 600),
     ],
 
 ];

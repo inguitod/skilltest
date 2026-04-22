@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Symfony\Component\HttpKernel\Exception\BadGatewayHttpException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -10,6 +11,8 @@ use Symfony\Component\HttpKernel\Exception\ServiceUnavailableHttpException;
 class WeatherService
 {
     private const TIMEOUT_SECONDS = 10;
+
+    private const CACHE_KEY_PREFIX = 'weather.planner.v1';
 
     private string $baseUrl;
 
@@ -32,6 +35,17 @@ class WeatherService
         }
 
         $city = trim($city);
+        $ttl = max(60, (int) config('services.openweather.cache_ttl_seconds', 600));
+        $cacheKey = self::CACHE_KEY_PREFIX.':'.hash('sha256', mb_strtolower($city, 'UTF-8'));
+
+        return Cache::remember($cacheKey, $ttl, fn (): array => $this->fetchPlannerByCity($city));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function fetchPlannerByCity(string $city): array
+    {
         $query = [
             'q' => $city,
             'appid' => $this->apiKey,
