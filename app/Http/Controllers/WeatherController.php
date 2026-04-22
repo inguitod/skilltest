@@ -14,10 +14,12 @@ class WeatherController extends Controller
 
     public function planner(WeatherPlannerRequest $request): JsonResponse
     {
-        $city = $request->validated()['city'];
+        $validated = $request->validated();
+        $city = $validated['city'];
+        $forceRefresh = $validated['force_refresh'] ?? false;
 
         return response()->json(
-            $this->weatherService->getPlannerByCity($city)
+            $this->weatherService->getPlannerByCity($city, $forceRefresh)
         );
     }
 }
