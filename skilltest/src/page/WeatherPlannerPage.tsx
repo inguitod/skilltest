@@ -194,6 +194,7 @@ export function WeatherPlannerPage() {
 	const [query, setQuery] = useState("");
 	const [data, setData] = useState<WeatherPlannerResponse | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [historyLoadingQueryKey, setHistoryLoadingQueryKey] = useState<string | null>(null);
 	const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
 	const [suggestLoading, setSuggestLoading] = useState(false);
 	const skipSuggestRef = useRef(false);
@@ -227,6 +228,7 @@ export function WeatherPlannerPage() {
 				toast.error(msg);
 			} finally {
 				setLoading(false);
+				setHistoryLoadingQueryKey(null);
 			}
 		},
 		[addSearch],
@@ -297,6 +299,7 @@ export function WeatherPlannerPage() {
 	const handleHistorySelect = (city: string) => {
 		skipSuggestRef.current = true;
 		setQuery(city);
+		setHistoryLoadingQueryKey(normalizeQueryKey(city));
 		void runSearch(city);
 	};
 
@@ -609,6 +612,7 @@ export function WeatherPlannerPage() {
 					entries={history}
 					onSelectCity={handleHistorySelect}
 					onClear={() => clearHistory()}
+					loadingCityQueryKey={loading ? historyLoadingQueryKey : null}
 				/>
 			</main>
 		</div>
