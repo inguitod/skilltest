@@ -41,4 +41,11 @@ return [
         'cache_ttl_seconds' => (int) env('WEATHER_CACHE_TTL', 600),
     ],
 
+    'nominatim' => [
+        'base_url' => rtrim((string) env('NOMINATIM_BASE_URL', 'https://nominatim.openstreetmap.org'), '/'),
+        'user_agent' => (string) env('NOMINATIM_USER_AGENT', ''),
+        'cache_ttl_seconds' => (int) env('NOMINATIM_CACHE_TTL', 60),
+        'suggest_limit' => (int) env('NOMINATIM_SUGGEST_LIMIT', 8),
+    ],
+
 ];

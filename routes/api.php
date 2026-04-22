@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\LocationController;
 use App\Http\Controllers\WeatherController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -16,3 +17,5 @@ Route::get('/health', function () {
 });
 
 Route::get('/weather/planner', [WeatherController::class, 'planner']);
+
+Route::get('/location/suggest', [LocationController::class, 'suggest']);
