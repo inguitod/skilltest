@@ -307,17 +307,19 @@ export function WeatherPlannerPage() {
 				) : null}
 
 				{!loading && !data ? (
-					<Empty className="mb-10 max-w-lg border-border/60 bg-muted/20 py-10">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<Cloud className="text-muted-foreground" aria-hidden />
-							</EmptyMedia>
-							<EmptyTitle>No city loaded</EmptyTitle>
-							<EmptyDescription>
-								Search for a city to see current conditions from your API.
-							</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
+					<div className="mb-10 flex w-full justify-center">
+						<Empty className="mx-auto w-full max-w-lg flex-none border-border/60 border-solid bg-muted/20 py-10 text-center">
+							<EmptyHeader className="mx-auto w-full max-w-sm items-center text-center">
+								<EmptyMedia variant="icon">
+									<Cloud className="text-muted-foreground" aria-hidden />
+								</EmptyMedia>
+								<EmptyTitle>No city loaded</EmptyTitle>
+								<EmptyDescription>
+									Search for a city to see current conditions from your API.
+								</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					</div>
 				) : null}
 
 				<HistorySection
