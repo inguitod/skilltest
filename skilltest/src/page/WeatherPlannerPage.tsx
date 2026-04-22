@@ -1,22 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import { toast } from "sonner";
 import {
 	Cloud,
-	CloudSun,
 	CloudRain,
 	Compass,
 	Droplets,
 	Eye,
 	Gauge,
-	Sun,
 	Wind,
 } from "lucide-react";
+import { AqiBadge } from "@/components/weather/AqiBadge";
+import { ForecastConditionIcon } from "@/components/weather/ForecastConditionIcon";
 import { SearchBar } from "@/components/weather/SearchBar";
 import { WeatherHero } from "@/components/weather/WeatherHero";
 import { WeatherMetricCard } from "@/components/weather/WeatherMetricCard";
 import { HistorySection } from "@/components/weather/HistorySection";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
 	Empty,
@@ -34,161 +32,22 @@ import {
 	pm25Progress,
 	windDirectionLabel,
 } from "@/lib/weatherFormat";
+import {
+	apiErrorMessage,
+	dateKeyFromText,
+	dateKeyFromUnix,
+	displayDayShortLabel,
+	formatNullable,
+	normalizeQueryKey,
+	readSearchFromUrl,
+	writeSearchToUrl,
+} from "@/lib/weatherPlannerPage";
 import { cn } from "@/lib/utils";
 import { getLocationSuggestions } from "@/services/locationSuggest";
 import { getWeatherPlanner } from "@/services/weatherPlanner";
 import { useWeatherHistoryStore } from "@/store/useWeatherHistoryStore";
 import type { LocationSuggestion } from "@/types/location";
 import type { WeatherPlannerResponse } from "@/types/weather";
-
-function apiErrorMessage(error: unknown): string {
-	if (axios.isAxiosError(error)) {
-		const data = error.response?.data as { message?: string } | undefined;
-		return data?.message ?? error.message;
-	}
-	if (error instanceof Error) {
-		return error.message;
-	}
-	return "Something went wrong";
-}
-
-function AqiBadge({
-	tone,
-	label,
-}: {
-	tone: ReturnType<typeof aqiBadgeTone>;
-	label: string;
-}) {
-	return (
-		<Badge
-			variant="outline"
-			className={cn(
-				"text-[10px] font-bold tracking-wide uppercase",
-				tone === "good" &&
-					"border-emerald-200 bg-emerald-100 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100",
-				tone === "fair" &&
-					"border-lime-200 bg-lime-100 text-lime-950 dark:border-lime-800 dark:bg-lime-950 dark:text-lime-100",
-				tone === "moderate" &&
-					"border-amber-200 bg-amber-100 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100",
-				tone === "poor" &&
-					"border-red-200 bg-red-100 text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-100",
-				tone === "unknown" && "border-muted bg-muted/60 text-muted-foreground",
-			)}
-		>
-			{label}
-		</Badge>
-	);
-}
-
-function formatNullable(n: number | null | undefined, suffix = ""): string {
-	if (n === null || n === undefined || Number.isNaN(n)) {
-		return "—";
-	}
-	return `${n}${suffix}`;
-}
-
-function normalizeQueryKey(value: string): string {
-	return value.trim().toLowerCase();
-}
-
-function shiftedDate(unixSeconds: number, timezoneOffsetSeconds: number | null | undefined): Date {
-	const shift = timezoneOffsetSeconds ?? 0;
-	return new Date((unixSeconds + shift) * 1000);
-}
-
-function dateKeyFromUnix(
-	unixSeconds: number | null | undefined,
-	timezoneOffsetSeconds: number | null | undefined,
-): string | null {
-	if (unixSeconds === null || unixSeconds === undefined || Number.isNaN(unixSeconds)) {
-		return null;
-	}
-	const d = shiftedDate(unixSeconds, timezoneOffsetSeconds);
-	const y = d.getUTCFullYear();
-	const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-	const day = String(d.getUTCDate()).padStart(2, "0");
-	return `${y}-${m}-${day}`;
-}
-
-function dateKeyFromText(value: string | null | undefined): string | null {
-	if (!value) {
-		return null;
-	}
-	const [datePart] = value.split(" ");
-	if (!datePart || datePart.length !== 10) {
-		return null;
-	}
-	return datePart;
-}
-
-function displayDayShortLabel(dateKey: string, isToday: boolean): string {
-	if (isToday) {
-		return "Today";
-	}
-	const d = new Date(`${dateKey}T00:00:00Z`);
-	return new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(d);
-}
-
-function conditionTone(condition: string): "sun" | "partly" | "rain" | "cloudy" {
-	const c = condition.toLowerCase();
-	if (c.includes("rain") || c.includes("drizzle") || c.includes("shower") || c.includes("storm")) {
-		return "rain";
-	}
-	if (c.includes("clear") || c.includes("sun")) {
-		return "sun";
-	}
-	if (c.includes("partly") || c.includes("few clouds")) {
-		return "partly";
-	}
-	return "cloudy";
-}
-
-function ForecastConditionIcon({ condition }: { condition: string }) {
-	const tone = conditionTone(condition);
-	if (tone === "sun") {
-		return <Sun className="size-4 text-amber-500" aria-hidden />;
-	}
-	if (tone === "partly") {
-		return <CloudSun className="size-4 text-sky-600" aria-hidden />;
-	}
-	if (tone === "rain") {
-		return <CloudRain className="size-4 text-blue-500" aria-hidden />;
-	}
-	return <Cloud className="size-4 text-slate-400" aria-hidden />;
-}
-
-function readSearchFromUrl(): string {
-	if (typeof window === "undefined") {
-		return "";
-	}
-	const params = new URLSearchParams(window.location.search);
-	const byQuery = params.get("search");
-	if (byQuery && byQuery.trim() !== "") {
-		return byQuery.trim();
-	}
-
-	// Support path style: /search=Manila
-	const prefix = "/search=";
-	if (window.location.pathname.startsWith(prefix)) {
-		const raw = window.location.pathname.slice(prefix.length);
-		const decoded = decodeURIComponent(raw);
-		return decoded.trim();
-	}
-
-	return "";
-}
-
-function writeSearchToUrl(city: string): void {
-	if (typeof window === "undefined") {
-		return;
-	}
-	const trimmed = city.trim();
-	if (!trimmed) {
-		window.history.replaceState(null, "", "/");
-		return;
-	}
-	window.history.replaceState(null, "", `/search=${encodeURIComponent(trimmed)}`);
-}
 
 export function WeatherPlannerPage() {
 	const [query, setQuery] = useState("");
