@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -10,9 +11,11 @@ class WeatherPlannerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        Cache::flush();
         config([
             'services.openweather.key' => 'test-openweather-key',
             'services.openweather.base_url' => 'https://api.openweathermap.org/data/2.5',
+            'services.openweather.cache_ttl_seconds' => 600,
         ]);
     }
 
