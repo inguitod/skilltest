@@ -6,6 +6,6 @@ export type HealthResponse = {
 };
 
 export const getHealth = async () => {
-	const response = await api.get<HealthResponse>("/health");
+	const response = await api.get<HealthResponse>("/api/health");
 	return response.data;
 };
