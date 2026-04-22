@@ -1,0 +1,18 @@
+{
+    "_readme": [
+        "Placeholder only — this monorepo root has no PHP dependencies.",
+        "The Laravel app and real lock file are in skilltest-backend/.",
+        "Do not run composer install here; use skilltest-backend/ instead."
+    ],
+    "content-hash": "d751713988987e9331980363e24189ce",
+    "packages": [],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": true,
+    "prefer-lowest": false,
+    "platform": {},
+    "platform-dev": {},
+    "plugin-api-version": "2.9.0"
+}
