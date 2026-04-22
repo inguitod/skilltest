@@ -117,15 +117,6 @@ function dateKeyFromText(value: string | null | undefined): string | null {
 	return datePart;
 }
 
-function displayDayLabel(dateKey: string, isToday: boolean): string {
-	const d = new Date(`${dateKey}T00:00:00Z`);
-	const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(d);
-	if (isToday) {
-		return `Today (${weekday})`;
-	}
-	return weekday;
-}
-
 function displayDayShortLabel(dateKey: string, isToday: boolean): string {
 	if (isToday) {
 		return "Today";
