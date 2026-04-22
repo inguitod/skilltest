@@ -90,6 +90,41 @@ class WeatherPlannerTest extends TestCase
         Http::assertSentCount(3);
     }
 
+    public function test_planner_caches_repeat_lookup_same_city(): void
+    {
+        Http::fake([
+            'api.openweathermap.org/data/2.5/weather*' => Http::response([
+                'cod' => 200,
+                'coord' => ['lat' => 51.5085, 'lon' => -0.1257],
+                'weather' => [['main' => 'Clear', 'description' => 'clear sky', 'icon' => '01d']],
+                'main' => [
+                    'temp' => 10.0,
+                    'feels_like' => 9.0,
+                    'temp_min' => 9.0,
+                    'temp_max' => 11.0,
+                    'pressure' => 1010,
+                    'humidity' => 60,
+                ],
+                'visibility' => 10_000,
+                'wind' => ['speed' => 2.0, 'deg' => 90],
+                'clouds' => ['all' => 10],
+                'dt' => 1_700_000_000,
+                'sys' => ['country' => 'GB', 'sunrise' => 1_700_000_000, 'sunset' => 1_700_040_000],
+                'timezone' => 0,
+                'name' => 'London',
+            ], 200),
+            'api.openweathermap.org/data/2.5/air_pollution*' => Http::response([
+                'list' => [['main' => ['aqi' => 1], 'components' => ['pm2_5' => 2.0], 'dt' => 1_700_000_000]],
+            ], 200),
+            'api.openweathermap.org/data/2.5/forecast*' => Http::response(['list' => []], 200),
+        ]);
+
+        $this->getJson('/api/weather/planner?city=London')->assertStatus(200);
+        $this->getJson('/api/weather/planner?city=london')->assertStatus(200);
+
+        Http::assertSentCount(3);
+    }
+
     public function test_planner_returns_404_when_city_unknown(): void
     {
         Http::fake([
