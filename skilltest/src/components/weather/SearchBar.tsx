@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { Search } from "lucide-react";
 import {
 	InputGroup,
@@ -6,17 +7,32 @@ import {
 	InputGroupInput,
 } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
+import type { LocationSuggestion } from "@/types/location";
 
 type SearchBarProps = {
 	value: string;
 	onChange: (value: string) => void;
 	onSubmit: () => void;
 	disabled?: boolean;
+	suggestions?: LocationSuggestion[];
+	suggestionsLoading?: boolean;
+	onSelectSuggestion?: (suggestion: LocationSuggestion) => void;
 };
 
-export function SearchBar({ value, onChange, onSubmit, disabled }: SearchBarProps) {
+export function SearchBar({
+	value,
+	onChange,
+	onSubmit,
+	disabled,
+	suggestions = [],
+	suggestionsLoading = false,
+	onSelectSuggestion,
+}: SearchBarProps) {
+	const listId = useId();
+	const showList = !disabled && (suggestions.length > 0 || suggestionsLoading) && value.trim().length >= 2;
+
 	return (
-		<div className="w-full max-w-2xl">
+		<div className="relative w-full max-w-2xl">
 			<InputGroup
 				className={cn(
 					"h-12 rounded-full border-input bg-background pr-1.5 shadow-sm",
@@ -37,6 +53,10 @@ export function SearchBar({ value, onChange, onSubmit, disabled }: SearchBarProp
 							onSubmit();
 						}
 					}}
+					autoComplete="off"
+					aria-autocomplete="list"
+					aria-controls={showList ? listId : undefined}
+					aria-expanded={showList}
 					placeholder="Search for cities to get the forecast..."
 					className="h-12 min-w-0 py-3 text-base"
 					aria-label="City search"
@@ -55,6 +75,34 @@ export function SearchBar({ value, onChange, onSubmit, disabled }: SearchBarProp
 					</InputGroupButton>
 				</InputGroupAddon>
 			</InputGroup>
+
+			{showList ? (
+				<ul
+					id={listId}
+					role="listbox"
+					className={cn(
+						"absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 max-h-64 overflow-y-auto rounded-2xl border border-border bg-popover p-1 text-popover-foreground shadow-md",
+					)}
+				>
+					{suggestionsLoading && suggestions.length === 0 ? (
+						<li className="rounded-xl px-3 py-2.5 text-sm text-muted-foreground">
+							Searching locations…
+						</li>
+					) : null}
+					{suggestions.map((s) => (
+						<li key={s.id} className="list-none" role="option">
+							<button
+								type="button"
+								className="w-full rounded-xl px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+								onMouseDown={(e) => e.preventDefault()}
+								onClick={() => onSelectSuggestion?.(s)}
+							>
+								<span className="line-clamp-2 font-medium text-foreground">{s.label}</span>
+							</button>
+						</li>
+					))}
+				</ul>
+			) : null}
 		</div>
 	);
 }

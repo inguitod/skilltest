@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -33,8 +33,10 @@ import {
 	windDirectionLabel,
 } from "@/lib/weatherFormat";
 import { cn } from "@/lib/utils";
+import { getLocationSuggestions } from "@/services/locationSuggest";
 import { getWeatherPlanner } from "@/services/weatherPlanner";
 import { useWeatherHistoryStore } from "@/store/useWeatherHistoryStore";
+import type { LocationSuggestion } from "@/types/location";
 import type { WeatherPlannerResponse } from "@/types/weather";
 
 function apiErrorMessage(error: unknown): string {
@@ -87,6 +89,9 @@ export function WeatherPlannerPage() {
 	const [query, setQuery] = useState("");
 	const [data, setData] = useState<WeatherPlannerResponse | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+	const [suggestLoading, setSuggestLoading] = useState(false);
+	const skipSuggestRef = useRef(false);
 
 	const history = useWeatherHistoryStore((s) => s.history);
 	const addSearch = useWeatherHistoryStore((s) => s.addSearch);
@@ -104,7 +109,13 @@ export function WeatherPlannerPage() {
 				const result = await getWeatherPlanner(trimmed);
 				setData(result);
 				addSearch(result.city, result.country);
-				setQuery(result.city);
+				setQuery((prev) => {
+					if (prev === result.city) {
+						return prev;
+					}
+					skipSuggestRef.current = true;
+					return result.city;
+				});
 			} catch (e) {
 				const msg = apiErrorMessage(e);
 				toast.error(msg);
@@ -115,9 +126,56 @@ export function WeatherPlannerPage() {
 		[addSearch],
 	);
 
+	useEffect(() => {
+		if (skipSuggestRef.current) {
+			skipSuggestRef.current = false;
+			return;
+		}
+		const q = query.trim();
+		if (q.length < 2) {
+			setSuggestions([]);
+			setSuggestLoading(false);
+			return;
+		}
+		setSuggestLoading(true);
+		setSuggestions([]);
+		let cancelled = false;
+		const t = setTimeout(() => {
+			void getLocationSuggestions(q)
+				.then((r) => {
+					if (!cancelled) {
+						setSuggestions(r.suggestions);
+					}
+				})
+				.catch(() => {
+					if (!cancelled) {
+						setSuggestions([]);
+					}
+				})
+				.finally(() => {
+					if (!cancelled) {
+						setSuggestLoading(false);
+					}
+				});
+		}, 350);
+		return () => {
+			cancelled = true;
+			clearTimeout(t);
+		};
+	}, [query]);
+
 	const onSubmitSearch = () => void runSearch(query);
 
+	const handleSelectSuggestion = (suggestion: LocationSuggestion) => {
+		skipSuggestRef.current = true;
+		setSuggestions([]);
+		setSuggestLoading(false);
+		setQuery(suggestion.label);
+		void runSearch(suggestion.search_query);
+	};
+
 	const handleHistorySelect = (city: string) => {
+		skipSuggestRef.current = true;
 		setQuery(city);
 		void runSearch(city);
 	};
@@ -146,6 +204,9 @@ export function WeatherPlannerPage() {
 						onChange={setQuery}
 						onSubmit={onSubmitSearch}
 						disabled={loading}
+						suggestions={suggestions}
+						suggestionsLoading={suggestLoading}
+						onSelectSuggestion={handleSelectSuggestion}
 					/>
 				</div>
 

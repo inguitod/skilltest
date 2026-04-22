@@ -1,0 +1,95 @@
+# Pushes a branch where the Laravel subfolder is the repository root.
+# Use this to connect a Laravel Cloud project to a single-app branch
+# (for example, while the main branch still holds a monorepo with the frontend).
+name: Extract Laravel app branch (Laravel Cloud)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_directory:
+        description: "Subfolder that contains the Laravel app (e.g. skilltest-backend)"
+        required: true
+        default: "skilltest-backend"
+      target_branch:
+        description: "Branch to create/update with the extracted root layout"
+        required: true
+        default: "laravel-cloud"
+      base_ref:
+        description: "Ref to split from (e.g. main, master, develop). Empty = repository default branch."
+        required: false
+        default: ""
+      force_push:
+        description: "If the target branch already exists, force-push the rewrite"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: extract-laravel-branch-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history required for subtree split)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # Needed when this workflow is triggered from a non-default branch
+          ref: ${{ inputs.base_ref != '' && inputs.base_ref || github.event.repository.default_branch }}
+
+      - name: Resolve base ref
+        id: ref
+        run: |
+          if [ -n "${{ inputs.base_ref }}" ]; then
+            echo "ref=${{ inputs.base_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.event.repository.default_branch }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create branch from split subtree
+        env:
+          SOURCE_DIR: ${{ inputs.source_directory }}
+          TARGET: ${{ inputs.target_branch }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if [ ! -d "$SOURCE_DIR" ] || [ ! -f "$SOURCE_DIR/artisan" ]; then
+            echo "Expected Laravel app at $SOURCE_DIR (missing directory or $SOURCE_DIR/artisan)" >&2
+            exit 1
+          fi
+          echo "Splitting prefix '$SOURCE_DIR' from '${{ steps.ref.outputs.ref }}' into branch '$TARGET'..."
+          git checkout "${{ steps.ref.outputs.ref }}"
+          if git show-ref --verify --quiet "refs/heads/${TARGET}"; then
+            git branch -D "${TARGET}"
+          fi
+          git subtree split --prefix="${SOURCE_DIR}" -b "${TARGET}"
+
+      - name: Push target branch
+        env:
+          TARGET: ${{ inputs.target_branch }}
+          FORCE: ${{ inputs.force_push }}
+        run: |
+          set -euo pipefail
+          if [ "${FORCE}" = "true" ]; then
+            git push -f origin "refs/heads/${TARGET}"
+          else
+            git push origin "refs/heads/${TARGET}"
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "### Laravel extract branch"
+            echo ""
+            echo "- **Source directory:** \`${{ inputs.source_directory }}\`"
+            echo "- **Target branch:** \`${{ inputs.target_branch }}\`"
+            echo "- **Base ref:** \`${{ steps.ref.outputs.ref }}\`"
+            echo ""
+            echo "In Laravel Cloud, set the app’s Git branch to \`${{ inputs.target_branch }}\` and the root path to the repository root (or leave default if root is the app root)."
+          } >> "$GITHUB_STEP_SUMMARY"
