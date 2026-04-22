@@ -18,6 +18,12 @@ class WeatherPlannerRequest extends FormRequest
                 'city' => trim($this->input('city')),
             ]);
         }
+
+        if ($this->has('force_refresh')) {
+            $this->merge([
+                'force_refresh' => $this->boolean('force_refresh'),
+            ]);
+        }
     }
 
     /**
@@ -27,6 +33,7 @@ class WeatherPlannerRequest extends FormRequest
     {
         return [
             'city' => ['required', 'string', 'max:255'],
+            'force_refresh' => ['sometimes', 'boolean'],
         ];
     }
 }

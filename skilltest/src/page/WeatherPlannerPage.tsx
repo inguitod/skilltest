@@ -87,6 +87,10 @@ function formatNullable(n: number | null | undefined, suffix = ""): string {
 	return `${n}${suffix}`;
 }
 
+function normalizeQueryKey(value: string): string {
+	return value.trim().toLowerCase();
+}
+
 function shiftedDate(unixSeconds: number, timezoneOffsetSeconds: number | null | undefined): Date {
 	const shift = timezoneOffsetSeconds ?? 0;
 	return new Date((unixSeconds + shift) * 1000);
@@ -199,7 +203,7 @@ export function WeatherPlannerPage() {
 	const clearHistory = useWeatherHistoryStore((s) => s.clearHistory);
 
 	const runSearch = useCallback(
-		async (city: string) => {
+		async (city: string, forceRefresh = false) => {
 			const trimmed = city.trim();
 			if (!trimmed) {
 				toast.error("Enter a city name.");
@@ -207,7 +211,7 @@ export function WeatherPlannerPage() {
 			}
 			setLoading(true);
 			try {
-				const result = await getWeatherPlanner(trimmed);
+				const result = await getWeatherPlanner(trimmed, forceRefresh);
 				setData(result);
 				addSearch(result.city, result.country);
 				writeSearchToUrl(result.city);
@@ -276,7 +280,11 @@ export function WeatherPlannerPage() {
 		};
 	}, [query]);
 
-	const onSubmitSearch = () => void runSearch(query);
+	const onSubmitSearch = () => {
+		const shouldForceRefresh =
+			data !== null && normalizeQueryKey(query) === normalizeQueryKey(data.city);
+		void runSearch(query, shouldForceRefresh);
+	};
 
 	const handleSelectSuggestion = (suggestion: LocationSuggestion) => {
 		skipSuggestRef.current = true;

@@ -28,7 +28,7 @@ class WeatherService
     /**
      * @return array<string, mixed>
      */
-    public function getPlannerByCity(string $city): array
+    public function getPlannerByCity(string $city, bool $forceRefresh = false): array
     {
         if ($this->apiKey === null) {
             throw new ServiceUnavailableHttpException(null, 'Weather service is not configured.');
@@ -37,6 +37,10 @@ class WeatherService
         $city = trim($city);
         $ttl = max(60, (int) config('services.openweather.cache_ttl_seconds', 600));
         $cacheKey = self::CACHE_KEY_PREFIX.':'.hash('sha256', mb_strtolower($city, 'UTF-8'));
+
+        if ($forceRefresh) {
+            Cache::forget($cacheKey);
+        }
 
         return Cache::remember($cacheKey, $ttl, fn (): array => $this->fetchPlannerByCity($city));
     }
