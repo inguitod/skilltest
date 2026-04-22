@@ -109,7 +109,7 @@ class WeatherService
             $list = $forecast['list'] ?? [];
             if (is_array($list)) {
                 $mapped = array_map(fn (mixed $item): array => $this->mapForecastItem(is_array($item) ? $item : []), $list);
-                $forecastItems = array_slice($mapped, 0, 8);
+                $forecastItems = $mapped;
             }
         }
 

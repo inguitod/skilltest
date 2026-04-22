@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
 	Cloud,
+	CloudSun,
 	CloudRain,
 	Compass,
 	Droplets,
 	Eye,
 	Gauge,
+	Sun,
 	Wind,
 } from "lucide-react";
 import { SearchBar } from "@/components/weather/SearchBar";
@@ -85,6 +87,114 @@ function formatNullable(n: number | null | undefined, suffix = ""): string {
 	return `${n}${suffix}`;
 }
 
+function shiftedDate(unixSeconds: number, timezoneOffsetSeconds: number | null | undefined): Date {
+	const shift = timezoneOffsetSeconds ?? 0;
+	return new Date((unixSeconds + shift) * 1000);
+}
+
+function dateKeyFromUnix(
+	unixSeconds: number | null | undefined,
+	timezoneOffsetSeconds: number | null | undefined,
+): string | null {
+	if (unixSeconds === null || unixSeconds === undefined || Number.isNaN(unixSeconds)) {
+		return null;
+	}
+	const d = shiftedDate(unixSeconds, timezoneOffsetSeconds);
+	const y = d.getUTCFullYear();
+	const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+	const day = String(d.getUTCDate()).padStart(2, "0");
+	return `${y}-${m}-${day}`;
+}
+
+function dateKeyFromText(value: string | null | undefined): string | null {
+	if (!value) {
+		return null;
+	}
+	const [datePart] = value.split(" ");
+	if (!datePart || datePart.length !== 10) {
+		return null;
+	}
+	return datePart;
+}
+
+function displayDayLabel(dateKey: string, isToday: boolean): string {
+	const d = new Date(`${dateKey}T00:00:00Z`);
+	const weekday = new Intl.DateTimeFormat("en-US", { weekday: "long", timeZone: "UTC" }).format(d);
+	if (isToday) {
+		return `Today (${weekday})`;
+	}
+	return weekday;
+}
+
+function displayDayShortLabel(dateKey: string, isToday: boolean): string {
+	if (isToday) {
+		return "Today";
+	}
+	const d = new Date(`${dateKey}T00:00:00Z`);
+	return new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" }).format(d);
+}
+
+function conditionTone(condition: string): "sun" | "partly" | "rain" | "cloudy" {
+	const c = condition.toLowerCase();
+	if (c.includes("rain") || c.includes("drizzle") || c.includes("shower") || c.includes("storm")) {
+		return "rain";
+	}
+	if (c.includes("clear") || c.includes("sun")) {
+		return "sun";
+	}
+	if (c.includes("partly") || c.includes("few clouds")) {
+		return "partly";
+	}
+	return "cloudy";
+}
+
+function ForecastConditionIcon({ condition }: { condition: string }) {
+	const tone = conditionTone(condition);
+	if (tone === "sun") {
+		return <Sun className="size-4 text-amber-500" aria-hidden />;
+	}
+	if (tone === "partly") {
+		return <CloudSun className="size-4 text-sky-600" aria-hidden />;
+	}
+	if (tone === "rain") {
+		return <CloudRain className="size-4 text-blue-500" aria-hidden />;
+	}
+	return <Cloud className="size-4 text-slate-400" aria-hidden />;
+}
+
+function readSearchFromUrl(): string {
+	if (typeof window === "undefined") {
+		return "";
+	}
+	const params = new URLSearchParams(window.location.search);
+	const byQuery = params.get("search");
+	if (byQuery && byQuery.trim() !== "") {
+		return byQuery.trim();
+	}
+
+	// Support path style: /search=Manila
+	const prefix = "/search=";
+	if (window.location.pathname.startsWith(prefix)) {
+		const raw = window.location.pathname.slice(prefix.length);
+		const decoded = decodeURIComponent(raw);
+		return decoded.trim();
+	}
+
+	return "";
+}
+
+function writeSearchToUrl(city: string): void {
+	if (typeof window === "undefined") {
+		return;
+	}
+	const trimmed = city.trim();
+	if (!trimmed) {
+		window.history.replaceState(null, "", "/");
+		return;
+	}
+	window.history.replaceState(null, "", `/search=${encodeURIComponent(trimmed)}`);
+}
+
 export function WeatherPlannerPage() {
 	const [query, setQuery] = useState("");
 	const [data, setData] = useState<WeatherPlannerResponse | null>(null);
@@ -109,6 +219,7 @@ export function WeatherPlannerPage() {
 				const result = await getWeatherPlanner(trimmed);
 				setData(result);
 				addSearch(result.city, result.country);
+				writeSearchToUrl(result.city);
 				setQuery((prev) => {
 					if (prev === result.city) {
 						return prev;
@@ -127,6 +238,16 @@ export function WeatherPlannerPage() {
 	);
 
 	useEffect(() => {
+		const initial = readSearchFromUrl();
+		if (!initial) {
+			return;
+		}
+		skipSuggestRef.current = true;
+		setQuery(initial);
+		void runSearch(initial);
+	}, [runSearch]);
+
+	useEffect(() => {
 		if (skipSuggestRef.current) {
 			skipSuggestRef.current = false;
 			return;
@@ -141,7 +262,7 @@ export function WeatherPlannerPage() {
 		setSuggestions([]);
 		let cancelled = false;
 		const t = setTimeout(() => {
-			void getLocationSuggestions(q)
+			void getLocationSuggestions(q, "city")
 				.then((r) => {
 					if (!cancelled) {
 						setSuggestions(r.suggestions);
@@ -191,6 +312,78 @@ export function WeatherPlannerPage() {
 	const visKm = data ? metersToKm(data.current.visibility_m) : null;
 	const rainPct = data?.forecast[0]?.precipitation_probability ?? null;
 	const rainHint = data?.forecast[0]?.weather.description ?? data?.forecast[0]?.weather.condition;
+	const todayDateKey = data
+		? dateKeyFromUnix(data.current.measured_at_unix, data.current.timezone_offset_seconds)
+		: null;
+	const dailyForecast = useMemo(() => {
+		if (!data) {
+			return [];
+		}
+		const zone = data.current.timezone_offset_seconds;
+		const buckets = new Map<
+			string,
+			{
+				temps: number[];
+				conditions: string[];
+			}
+		>();
+
+		for (const item of data.forecast) {
+			const key = dateKeyFromText(item.at_text) ?? dateKeyFromUnix(item.at_unix, zone);
+			if (!key) {
+				continue;
+			}
+			const entry = buckets.get(key) ?? { temps: [], conditions: [] };
+			if (item.temperature_c !== null && item.temperature_c !== undefined) {
+				entry.temps.push(item.temperature_c);
+			}
+			const condition = item.weather.description ?? item.weather.condition;
+			if (condition) {
+				entry.conditions.push(condition);
+			}
+			buckets.set(key, entry);
+		}
+
+		const rows: Array<{
+			dateKey: string;
+			dayLabel: string;
+			condition: string;
+			high: number | null;
+			low: number | null;
+		}> = [];
+
+		if (todayDateKey) {
+			rows.push({
+				dateKey: todayDateKey,
+				dayLabel: displayDayShortLabel(todayDateKey, true),
+				condition: data.current.weather.description ?? data.current.weather.condition ?? "Weather",
+				high: data.current.temp_max_c !== null && data.current.temp_max_c !== undefined ? data.current.temp_max_c : null,
+				low: data.current.temp_min_c !== null && data.current.temp_min_c !== undefined ? data.current.temp_min_c : null,
+			});
+		}
+
+		const upcomingKeys = Array.from(buckets.keys())
+			.filter((key) => key !== todayDateKey)
+			.sort((a, b) => a.localeCompare(b));
+
+		for (const key of upcomingKeys) {
+			const bucket = buckets.get(key);
+			if (!bucket) {
+				continue;
+			}
+			const high = bucket.temps.length > 0 ? Math.max(...bucket.temps) : null;
+			const low = bucket.temps.length > 0 ? Math.min(...bucket.temps) : null;
+			rows.push({
+				dateKey: key,
+				dayLabel: displayDayShortLabel(key, false),
+				condition: bucket.conditions[0] ?? "Weather",
+				high,
+				low,
+			});
+		}
+
+		return rows.slice(0, 7);
+	}, [data, todayDateKey]);
 
 	const progressValue = Math.round(pm25Progress(pm25) * 100);
 
@@ -224,6 +417,36 @@ export function WeatherPlannerPage() {
 				{data ? (
 					<>
 						<WeatherHero data={data} />
+						<Card className="mb-10 border-border/60 bg-muted/20">
+							<CardHeader className="pb-3">
+								<CardTitle className="text-2xl font-semibold tracking-tight">7-Day Forecast</CardTitle>
+							</CardHeader>
+							<CardContent className="px-0 pt-0">
+								{dailyForecast.length > 0 ? (
+									<ul className="divide-y divide-border/60">
+										{dailyForecast.map((item) => (
+											<li key={item.dateKey} className="flex items-center justify-between gap-4 px-6 py-4">
+												<p className="w-16 font-medium text-foreground/90">{item.dayLabel}</p>
+												<div className="flex min-w-0 flex-1 items-center gap-2 text-muted-foreground">
+													<ForecastConditionIcon condition={item.condition} />
+													<p className="truncate text-sm capitalize">{item.condition}</p>
+												</div>
+												<div className="flex items-baseline gap-3 text-right tabular-nums">
+													<span className="font-semibold text-foreground">
+														{item.high !== null ? `${Math.round(item.high)}°` : "—"}
+													</span>
+													<span className="text-muted-foreground">
+														{item.low !== null ? `${Math.round(item.low)}°` : "—"}
+													</span>
+												</div>
+											</li>
+										))}
+									</ul>
+								) : (
+									<div className="px-6 pb-4 text-sm text-muted-foreground">No forecast dates available.</div>
+								)}
+							</CardContent>
+						</Card>
 
 						<section className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 							<WeatherMetricCard
